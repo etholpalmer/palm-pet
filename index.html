@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<title>Palm-PET</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Palm-PET">
+<style>
+:root {
+  --ink:        oklch(96% 0.01 250);
+  --ink-dim:    oklch(66% 0.02 250);
+  --ground:     oklch(17% 0.012 255);
+  --raised:     oklch(23% 0.014 255);
+  --raised-hi:  oklch(28% 0.016 255);
+  --accent:     oklch(82% 0.15 165);
+  --accent-ink: oklch(20% 0.05 165);
+  --danger:     oklch(70% 0.16 25);
+
+  --amount:  clamp(3.2rem, 1.5rem + 12vw, 5.5rem);
+  --keycap:  clamp(1.5rem, 0.9rem + 3.2vw, 2rem);
+  --gap:     clamp(0.5rem, 0.3rem + 1vw, 0.75rem);
+  --radius:  14px;
+  --fast:    140ms;
+  --ease:    cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font: 400 16px/1.4 ui-rounded, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ── the number, which is the whole point of the screen ─────────────── */
+.readout {
+  padding: clamp(1rem, 4vh, 2.5rem) var(--gap) var(--gap);
+  text-align: right; position: relative;
+}
+#amount {
+  font: 300 var(--amount)/1 ui-monospace, SFMono-Regular, "SF Mono", monospace;
+  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  display: block; transition: color var(--fast) var(--ease);
+}
+#save:disabled ~ * #amount, .rest #amount { color: var(--ink-dim); }
+#confirm {
+  position: absolute; inset-inline: var(--gap); bottom: 0; height: 2px;
+  background: var(--accent); transform: scaleX(0); transform-origin: right;
+  border-radius: 2px;
+}
+#confirm.on { animation: sweep 520ms var(--ease); }
+@keyframes sweep {
+  0%   { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #confirm.on { animation: none; opacity: 0; }
+}
+
+[hidden] { display: none !important; }
+
+/* ── today ──────────────────────────────────────────────────────────── */
+.today {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 var(--gap);
+}
+.today-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.35rem 0.15rem 0.5rem; color: var(--ink-dim);
+  font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
+  position: sticky; top: 0; background: var(--ground);
+}
+/* #today-h is an h1, and the user-agent 2em was multiplying the 0.8rem above it: the LABEL
+   rendered at 25.6px/700 while the total it labels rendered at 16px/400, so the row read
+   label-first. The label is a label. */
+.today-head h1 { font: inherit; margin: 0; }
+#total {
+  font-variant-numeric: tabular-nums; color: var(--ink);
+  font-size: 1.15rem; font-weight: 500; letter-spacing: 0;
+}
+/* A21. Secondary to today's total by size and colour: the rate informs, the day's number
+   is what the capture loop is for. */
+#rate {
+  margin: 0 0 0.5rem; padding: 0 0.15rem; display: flex; align-items: baseline;
+  gap: 0.4rem; flex-wrap: wrap; color: var(--ink-dim); font-size: 0.8rem;
+}
+.rate-figure {
+  font-variant-numeric: tabular-nums; font-size: 0.95rem; font-weight: 500; color: var(--ink);
+}
+.rate-unit { margin-left: -0.2rem; }
+.rate-span { margin-left: auto; }
+#list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.entry {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem;
+  padding: 0.6rem 0.7rem; background: var(--raised); border-radius: 10px;
+  cursor: pointer; transition: background var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.entry:hover, .entry:focus-visible { background: var(--raised-hi); outline: none; }
+.entry:active { transform: scale(0.985); }
+.entry-amount { font-variant-numeric: tabular-nums; font-weight: 500; }
+.entry-meta { color: var(--ink-dim); font-size: 0.85rem; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#empty { color: var(--ink-dim); font-size: 0.85rem; padding: 0.6rem 0.15rem; }
+/* A20. Deliberately not a key and not Save: a full-width labelled row, quiet until
+   touched, so a considered tap and an accidental double-tap have different shapes. */
+#nospend {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+  width: 100%; margin-top: 0.15rem; padding: 0.6rem 0.7rem;
+  font: inherit; font-size: 0.9rem; color: var(--ink-dim); text-align: left;
+  background: none; border: 1px dashed var(--raised-hi); border-radius: 10px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease),
+              background var(--fast) var(--ease);
+}
+#nospend:hover, #nospend:focus-visible {
+  color: var(--ink); border-color: var(--accent); background: var(--raised); outline: none;
+}
+#nospend:active { transform: scale(0.99); }
+#nospend .hint { font-size: 0.78rem; color: var(--ink-dim); }
+
+/* ── reports ────────────────────────────────────────────────────────────
+   One dominant figure, then a dense strip of days, then quiet rows. The strip is the point:
+   a day with nothing on it is a hairline rather than a gap, because the days with nothing are
+   what the rate divides by and a chart that omits them flatters by construction. */
+/* A <dialog> renders in the top layer: it is laid out against the VIEWPORT, not inside
+   <body>, so the safe-area padding body carries never reaches it. Full-bleed, that put the
+   header and the Done button under the status bar. The insets belong on the dialog itself.
+   Bottom is 0 here because #report-main already carries it. */
+#report {
+  border: none; margin: 0; width: 100%; max-width: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  height: 100%; max-height: 100%; background: var(--ground); color: var(--ink);
+}
+#report::backdrop { background: oklch(10% 0.01 255 / 0.7); }
+.report-body { display: flex; flex-direction: column; height: 100%; padding: 0 var(--gap) var(--gap); }
+.report-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding: 0.9rem 0.15rem 0.6rem; position: sticky; top: 0; background: var(--ground);
+}
+.report-head h2 { margin: 0; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim); }
+#report-close {
+  font: inherit; font-size: 0.9rem; color: var(--accent); background: none; border: none;
+  padding: 0.2rem 0.1rem; cursor: pointer;
+}
+#report-empty { color: var(--ink-dim); font-size: 0.9rem; padding: 1.5rem 0.15rem; }
+#report-main { overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
+
+.report-rate {
+  margin: 0.4rem 0 0; padding: 0 0.15rem; display: flex; align-items: baseline; gap: 0.3rem;
+  font-variant-numeric: tabular-nums; font-size: clamp(2.4rem, 1.2rem + 8vw, 3.6rem);
+  font-weight: 500; line-height: 1;
+}
+.report-unit { font-size: 0.9rem; font-weight: 400; color: var(--ink-dim); letter-spacing: 0.02em; }
+.report-span, .report-cover {
+  margin: 0.35rem 0 0; padding: 0 0.15rem; color: var(--ink-dim); font-size: 0.85rem;
+}
+.report-cover { margin-top: 0.15rem; }
+.report-cover b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.report-strip-wrap { margin: 1.4rem 0 0; overflow-x: auto; overscroll-behavior-x: contain; }
+.report-strip {
+  display: flex; align-items: flex-end; gap: 3px; height: 130px;
+  padding: 0 0.15rem; min-width: 100%; width: max-content;
+}
+.report-strip i {
+  /* Grows to fill the strip while the range is short, holds 9px and scrolls once it is not.
+     A fixed width left a fortnight clustered against the left edge with half the strip empty. */
+  display: block; flex: 1 1 9px; min-width: 9px; max-width: 22px;
+  border-radius: 2px 2px 0 0;
+  background: var(--raised-hi); transition: background var(--fast) var(--ease);
+}
+.report-strip i.nil  { background: var(--raised); height: 2px !important; }
+/* A recorded zero. Same height as an empty day — there is nothing to measure — but the
+   user's mark rather than the calendar's, so it reads at full strength. */
+.report-strip i.zero { background: var(--ink-dim); height: 5px !important; }
+.report-strip i.today { background: var(--accent); }
+/* An empty today: still the accent, so it is findable, but a hairline like any other blank
+   day so it does not read as spending. */
+.report-strip i.nil.today { background: var(--accent); opacity: 0.55; }
+.report-cap { margin: 0.5rem 0 0; padding: 0 0.15rem; color: var(--ink-dim); font-size: 0.75rem; }
+
+.report-cut { margin-top: 1.8rem; }
+.report-cut h3 {
+  margin: 0 0 0.5rem; padding: 0 0.15rem; font-size: 0.8rem; font-weight: 500;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-dim);
+}
+.report-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.report-rows li {
+  display: flex; align-items: baseline; gap: 0.75rem;
+  padding: 0.55rem 0.7rem; background: var(--raised); border-radius: 10px;
+}
+.report-rows .k { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-rows .k.absent { color: var(--ink-dim); font-style: italic; }
+.report-rows .n { color: var(--ink-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.report-rows .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* ── keypad ─────────────────────────────────────────────────────────── */
+/* No bottom inset here: body already carries env(safe-area-inset-bottom), and the footer, not the
+   pad, is the bottom edge. With both, a 34px inset was applied twice — once as dead space between
+   Save and the footer, once under the footer. */
+.pad {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap);
+  padding: var(--gap);
+}
+.pad button {
+  font: inherit; font-size: var(--keycap); font-weight: 500; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink); background: var(--raised); border: 0; border-radius: var(--radius);
+  padding: clamp(0.7rem, 2.2vh, 1.15rem) 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.pad button:active { background: var(--raised-hi); transform: scale(0.96); }
+.pad button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pad .util { color: var(--ink-dim); font-size: 1.1rem; }
+#save {
+  grid-column: span 3; background: var(--accent); color: var(--accent-ink);
+  font-weight: 650; letter-spacing: 0.02em;
+}
+#save:disabled { background: var(--raised); color: var(--ink-dim); cursor: default; transform: none; }
+
+/* ── back-fill sheet ────────────────────────────────────────────────── */
+dialog {
+  border: 0; border-radius: 18px 18px 0 0; padding: 0; margin: auto auto 0;
+  width: min(34rem, 100%); background: var(--raised); color: var(--ink);
+}
+dialog::backdrop { background: oklch(0% 0 0 / 0.55); }
+.sheet-body {
+  padding: 1.1rem var(--gap) max(var(--gap), env(safe-area-inset-bottom));
+  display: grid; gap: 0.7rem;
+}
+.sheet-body h2 { margin: 0 0 0.2rem; font-size: 0.8rem; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-dim); font-weight: 600; }
+.row { display: grid; gap: 0.3rem; }
+.row.two { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+label { font-size: 0.75rem; color: var(--ink-dim); }
+input {
+  font: inherit; color: var(--ink); background: var(--ground); border: 1px solid transparent;
+  border-radius: 10px; padding: 0.55rem 0.65rem; width: 100%;
+}
+input:focus { outline: none; border-color: var(--accent); }
+#f-vocab { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+/* There is no tag-management screen (D9), so the only place the create-by-typing mechanic can
+   be stated is next to the field. Sits under the chips because the chips answer "which tags
+   exist" and this answers "how do I get another one". */
+.field-hint { margin: -0.35rem 0 0; font-size: 0.72rem; line-height: 1.35; color: var(--ink-dim); }
+input::placeholder { color: var(--ink-dim); opacity: 0.55; }
+.chip {
+  font: inherit; font-size: 0.8rem; color: var(--ink-dim); background: var(--ground);
+  border: 0; border-radius: 999px; padding: 0.3rem 0.7rem; cursor: pointer;
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+/* Applied. A chip that is on has to be legible as on at a glance, or a toggle is guesswork —
+   the user would have to read the text field to know what a tap is about to do. */
+.chip.on {
+  background: var(--accent); color: var(--accent-ink); font-weight: 500;
+}
+.chip.on::after { content: ' ×'; opacity: 0.55; }
+.chip:hover, .chip:focus-visible { color: var(--accent-ink); background: var(--accent); outline: none; }
+.sheet-actions { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
+.sheet-actions button {
+  flex: 1; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
+  padding: 0.7rem; cursor: pointer; color: var(--ink); background: var(--ground);
+}
+.sheet-actions .primary { background: var(--accent); color: var(--accent-ink); }
+.sheet-actions .destructive { color: var(--danger); flex: 0 0 auto; padding-inline: 1rem; }
+
+/* ── footer ─────────────────────────────────────────────────────────── */
+footer {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+  padding: 0 var(--gap) var(--gap); font-size: 0.72rem; color: var(--ink-dim);
+}
+footer button {
+  font: inherit; color: var(--ink-dim); background: none; border: 0;
+  /* 44px tall, and the footer grows to hold it. The previous version borrowed the height with a
+     negative margin: it reached 14px above the footer into Save, so wherever the bottom inset is
+     0 a tap on Save's bottom edge opened Reports or started an export, and the page scrolled.
+     A target that size needs the space; it cannot be taken from a neighbour. */
+  min-height: 44px; padding: 0.35rem 0.5rem; margin: 0 -0.5rem; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+footer button:hover, footer button:focus-visible { color: var(--ink); outline: none; }
+</style>
+</head>
+<body>
+
+<main class="readout" aria-live="polite">
+  <output id="amount" aria-label="amount entered">0.00</output>
+  <div id="confirm" aria-hidden="true"></div>
+</main>
+
+<section class="today" aria-labelledby="today-h">
+  <div class="today-head">
+    <h1 id="today-h">today <span id="day"></span></h1>
+    <span id="total">0.00</span>
+  </div>
+  <p id="rate" hidden>
+    <span class="rate-figure"></span><span class="rate-unit"> a day</span>
+    <span class="rate-span"></span>
+  </p>
+  <ul id="list"></ul>
+  <p id="empty">Nothing logged yet today.</p>
+  <button id="nospend" type="button" hidden>
+    <span>No spend today</span><span class="hint">logs 0.00</span>
+  </button>
+</section>
+
+<nav class="pad" aria-label="amount keypad">
+  <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+  <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+  <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+  <button data-key="00" class="util">00</button>
+  <button data-key="0">0</button>
+  <button data-key="backspace" class="util" aria-label="backspace">⌫</button>
+  <button id="save" disabled>Save</button>
+</nav>
+
+<footer>
+  <span id="stamp"></span>
+  <button id="reports">Reports</button>
+  <button id="export">Export</button>
+</footer>
+
+<dialog id="report" aria-labelledby="report-h">
+  <div class="report-body">
+    <div class="report-head">
+      <h2 id="report-h">Reports</h2>
+      <button type="button" id="report-close" aria-label="close">Done</button>
+    </div>
+
+    <p id="report-empty" hidden>Nothing recorded yet. The reports appear once there is a day to report on.</p>
+
+    <div id="report-main" hidden>
+      <p class="report-rate">
+        <span id="r-rate"></span><span class="report-unit"> a day</span>
+      </p>
+      <p class="report-span" id="r-span"></p>
+
+      <p class="report-cover" id="r-cover"></p>
+
+      <div class="report-strip-wrap">
+        <div class="report-strip" id="r-strip" role="img" aria-labelledby="r-strip-cap"></div>
+      </div>
+      <p class="report-cap" id="r-strip-cap"></p>
+
+      <section class="report-cut" id="r-tags-sec" hidden>
+        <h3>By tag</h3>
+        <ul class="report-rows" id="r-tags"></ul>
+        <p class="report-cap">An entry with two tags counts against both, so these add to more than the total.</p>
+      </section>
+
+      <section class="report-cut" id="r-sources-sec" hidden>
+        <h3>By source of funds</h3>
+        <ul class="report-rows" id="r-sources"></ul>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="sheet" aria-labelledby="sheet-h">
+  <form id="sheet-form" class="sheet-body" method="dialog">
+    <h2 id="sheet-h">Add details</h2>
+    <div class="row two">
+      <div class="row"><label for="f-date">Date</label><input id="f-date" type="date"></div>
+      <div class="row"><label for="f-time">Time</label><input id="f-time" type="time"></div>
+    </div>
+    <div class="row"><label for="f-amount">Amount</label><input id="f-amount" inputmode="decimal"></div>
+    <div class="row"><label for="f-note">Note</label><input id="f-note" type="text" autocomplete="off"></div>
+    <div class="row">
+      <label for="f-tags">Tags</label>
+      <input id="f-tags" type="text" autocomplete="off" enterkeyhint="done"
+             placeholder="coffee, work" aria-describedby="f-tags-hint">
+    </div>
+    <div id="f-vocab"></div>
+    <p id="f-tags-hint" class="field-hint">Tap to add, tap again to remove. Type anything to create a
+      new tag; commas separate, and spacing and capitals are tidied.</p>
+    <div class="row"><label for="f-source">Source of funds</label><input id="f-source" type="text" autocomplete="off"></div>
+    <div class="sheet-actions">
+      <button type="button" id="sheet-void" class="destructive">Void</button>
+      <button type="button" id="sheet-cancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="./src/shell/app.js"></script>
+</body>
+</html>
